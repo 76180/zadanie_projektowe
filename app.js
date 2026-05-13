@@ -19,9 +19,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const statGenres = document.getElementById('statGenres');
     const statPublishers = document.getElementById('statPublishers');
 
-    const refreshDataBtn = document.getElementById('refreshDataBtn');
+    // const refreshDataBtn = document.getElementById('refreshDataBtn');
+    const addBookBtn = document.getElementById('addBookBtn');
     const reloadTopBtn = document.getElementById('reloadTopBtn');
     const showAllBtn = document.getElementById('showAllBtn');
+
+    const authView = document.getElementById('authView');
+    const authEmail = document.getElementById('authEmail');
+    const authPassword = document.getElementById('authPassword');
+    const loginBtn = document.getElementById('loginBtn');
+    const registerBtn = document.getElementById('registerBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const authStatus = document.getElementById('authStatus');
+    const appContainer = document.querySelector('.app-container');
+
 
     let allBooks = [];
     let filteredBooks = [];
@@ -57,6 +68,106 @@ document.addEventListener('DOMContentLoaded', () => {
             return { data: [], error: err };
         }
     }
+
+
+async function checkSession() {
+    const { data, error } = await supabaseClient.auth.getSession();
+
+    if (error) {
+        authStatus.textContent = error.message;
+        showAuthView();
+        return;
+    }
+
+    if (data.session) {
+        showAppView();
+        await loadDatabase();
+    } else {
+        showAuthView();
+    }
+}
+
+function showAuthView() {
+    authView.classList.remove('hidden');
+    appContainer.classList.add('hidden');
+    detailPanel.classList.remove('active');
+}
+
+function showAppView() {
+    authView.classList.add('hidden');
+    appContainer.classList.remove('hidden');
+}
+
+async function loginUser() {
+    const email = authEmail.value.trim();
+    const password = authPassword.value.trim();
+
+    if (!email || !password) {
+        authStatus.textContent = 'Podaj email i hasło.';
+        return;
+    }
+
+    const { error } = await supabaseClient.auth.signInWithPassword({
+        email,
+        password
+    });
+
+    if (error) {
+        authStatus.textContent = error.message;
+        return;
+    }
+
+    authStatus.textContent = '';
+    showAppView();
+    await loadDatabase();
+}
+
+async function registerUser() {
+    const email = authEmail.value.trim();
+    const password = authPassword.value.trim();
+
+    if (!email || !password) {
+        authStatus.textContent = 'Podaj email i hasło.';
+        return;
+    }
+
+    const { error } = await supabaseClient.auth.signUp({
+        email,
+        password
+    });
+
+    if (error) {
+        authStatus.textContent = error.message;
+        return;
+    }
+
+    authStatus.textContent = 'Konto utworzone. Sprawdź email, jeśli Supabase wymaga potwierdzenia.';
+}
+
+async function logoutUser() {
+    await supabaseClient.auth.signOut();
+    showAuthView();
+}
+
+
+    async function safeInsert(table, payload) {
+    try {
+        const { data, error } = await supabaseClient
+            .from(table)
+            .insert(payload)
+            .select();
+
+        return {
+            data: data || [],
+            error
+        };
+    } catch (err) {
+        return {
+            data: [],
+            error: err
+        };
+    }
+}
 
     async function loadDatabase() {
         setStatus('Ładowanie danych z Supabase...');
@@ -323,9 +434,9 @@ document.addEventListener('DOMContentLoaded', () => {
         renderBooks();
     });
 
-    refreshDataBtn.addEventListener('click', async () => {
-        await loadDatabase();
-    });
+    // refreshDataBtn.addEventListener('click', async () => {
+    //     await loadDatabase();
+    // });
 
     reloadTopBtn.addEventListener('click', async () => {
         await loadDatabase();
@@ -340,13 +451,52 @@ document.addEventListener('DOMContentLoaded', () => {
         applyFilters();
     });
 
+    addBookBtn.addEventListener('click', async () => {
+    const title = prompt('Podaj tytuł książki:');
+    if (!title) return;
+
+    const yearInput = prompt('Podaj rok wydania:');
+    const year = Number(yearInput);
+
+    if (Number.isNaN(year)) {
+        alert('Rok wydania musi być liczbą.');
+        return;
+    }
+
+    setStatus('Dodawanie książki do bazy...');
+
+    const result = await safeInsert('ksiazki', [
+        {
+            tytul: title,
+            rok_wydania: year
+        }
+    ]);
+
+    if (result.error) {
+        console.error(result.error);
+        setStatus(
+            `Błąd dodawania książki: ${result.error.message || result.error}`,
+            'error'
+        );
+        return;
+    }
+
+    setStatus(`Dodano książkę "${title}".`);
+
+    await loadDatabase();
+});
+
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape') {
             closeDetailPanel();
         }
     });
 
-    loadDatabase().catch(err => {
+    loginBtn.addEventListener('click', loginUser);
+    registerBtn.addEventListener('click', registerUser);
+    logoutBtn.addEventListener('click', logoutUser);
+
+    checkSession().catch(err => {
         console.error(err);
         setStatus(`Błąd ładowania danych: ${err.message}`, 'error');
         booksGrid.innerHTML = `
